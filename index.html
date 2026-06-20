@@ -280,7 +280,6 @@
         .sync-status.failed { background:#f8d7da; color:#721c24; }
         .sync-status.syncing { background:#fff3cd; color:#856404; }
 
-        /* SORTIR BUTTONS */
         .sort-buttons { display:flex; flex-wrap:wrap; gap:0.5rem; margin:1rem 0; }
         .sort-btn { 
             padding:0.4rem 1.2rem; 
@@ -300,6 +299,18 @@
         .order-stats { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; padding:0.8rem; background:#faf8f6; border-radius:12px; }
         .order-stat-item { font-size:0.85rem; }
         .order-stat-item strong { color:var(--primary); }
+
+        .spreadsheet-link {
+            display:inline-block;
+            padding:0.3rem 0.8rem;
+            background:#f0ebe6;
+            border-radius:6px;
+            font-size:0.7rem;
+            color:var(--primary);
+            word-break:break-all;
+            margin-top:0.2rem;
+        }
+        .spreadsheet-link:hover { background:#e6ddd4; }
 
         @media (max-width:768px) {
             .navbar { padding:0.8rem 1.2rem; flex-direction:column; text-align:center; }
@@ -368,14 +379,22 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ============================================================
-    // 1. KONFIGURASI API APP SCRIPT
+    // 1. KONFIGURASI API APP SCRIPT - URL BARU
     // ============================================================
     const GOOGLE_SCRIPT_URL = {
-        produk: 'https://docs.google.com/spreadsheets/d/1xKIXm0tV0yB5Iule6BSy2VAmCsboz3wskyg_NEQTgjA',
-        pesanan: 'https://script.google.com/macros/s/AKfycbzIHq8A6mTPGxFuQufTEiVsc7flsUu9cEkAp7HgCmQg4WLWTrhfl38P7WVI2WfwTGo8HA/exec',
-        member: 'https://script.google.com/macros/s/AKfycbxuKScCbQfveXQ8pYXjsAPJQjj2CMqgWtsHGDt7q9ucZrit729PyP0BAlhcOZDIIKzjww/exec'
-    };
+        // DATA PRODUK
+        produk: 'https://script.google.com/macros/s/AKfycbzGWIzOZrC6UW_i8QRiuXXt9RfRxciDGZ9RHZ0RmyFP5zjdIogyXm5T_iSLV3UH4RXNfg/exec',
+        produkSpreadsheet: 'https://docs.google.com/spreadsheets/d/1xKIXm0tV0yB5Iule6BSy2VAmCsboz3wskyg_NEQTgjA',
         
+        // DATA MEMBER
+        member: 'https://script.google.com/macros/s/AKfycbykI4CXy64yZPs5WZBsXl5L8E1LU36zE63sqh15m6wEkPUNy8ik7C6a9zeIs5Q98iAvuw/exec',
+        memberSpreadsheet: 'https://docs.google.com/spreadsheets/d/1wfSYbHhYq5GTRwONfLdiNDponwdaU1ARaCjktMKSINo',
+        
+        // DATA PESANAN
+        pesanan: 'https://script.google.com/macros/s/AKfycbxpsSyuMLx3RZWQZElJ9iFxfHYyerLrwvMzgj7lT-shYxLW7gm_zlNyUrcTLnIp9vAfbA/exec',
+        pesananSpreadsheet: 'https://docs.google.com/spreadsheets/d/15Hgm6LSp1t3GzwzrVgmTjuFa3ZeinZSFQtzNZVp8qT8'
+    };
+
     // ============================================================
     // 2. FUNGSI API APP SCRIPT
     // ============================================================
@@ -519,6 +538,35 @@
         }
     }
 
+    // 3.7 SYNC SEMUA DATA
+    async function syncAllData() {
+        const statusEl = document.getElementById('syncAllStatus');
+        if (statusEl) {
+            statusEl.className = 'sync-status syncing';
+            statusEl.innerHTML = '⏳ Menyinkronkan semua data...';
+        }
+        
+        const results = await Promise.all([
+            syncProductsFromSpreadsheet(),
+            currentUser ? syncOrdersFromSpreadsheet() : Promise.resolve(true)
+        ]);
+        
+        if (statusEl) {
+            if (results.every(r => r === true)) {
+                statusEl.className = 'sync-status success';
+                statusEl.innerHTML = '✅ Semua data tersinkron';
+            } else {
+                statusEl.className = 'sync-status failed';
+                statusEl.innerHTML = '⚠️ Beberapa data gagal sync';
+                setTimeout(() => {
+                    statusEl.className = 'sync-status success';
+                    statusEl.innerHTML = '✅ Semua data tersinkron';
+                }, 3000);
+            }
+        }
+        render();
+    }
+
     // ============================================================
     // 4. ADMIN CREDENTIALS & STATE
     // ============================================================
@@ -546,7 +594,7 @@
     let registerMap, registerMarker, kontakMap;
     let selectedLoginRole = 'member';
     let isLoading = false;
-    let sortType = 'terbaru'; // terbaru, tertua, termahal, termurah
+    let sortType = 'terbaru';
 
     // ============================================================
     // 5. DATA WILAYAH
@@ -708,6 +756,11 @@
             default:
                 return sorted;
         }
+    }
+
+    function setSort(type) {
+        sortType = type;
+        render();
     }
 
     // ============================================================
@@ -899,9 +952,12 @@
                 <div style="display:flex; gap:0.8rem; flex-wrap:wrap; margin-bottom:1rem;">
                     <button class="btn btn-gold" id="addProductBtn"><i class="fas fa-plus"></i> Tambah Produk</button>
                     <button class="btn btn-secondary" id="syncProductBtn" style="background:#3498db; color:#fff;">
-                        <i class="fas fa-sync"></i> Sync dari Spreadsheet
+                        <i class="fas fa-sync"></i> Sync Produk
                     </button>
-                    <span id="productSyncStatus" class="sync-status success">✅ Tersinkron</span>
+                    <button class="btn btn-secondary" id="syncAllBtn" style="background:#27ae60; color:#fff;">
+                        <i class="fas fa-sync-alt"></i> Sync Semua
+                    </button>
+                    <span id="syncAllStatus" class="sync-status success">✅ Tersinkron</span>
                 </div>
                 <div style="overflow-x:auto; background:rgba(255,255,255,0.05); border-radius:12px; padding:0.5rem;">
                     <table>
@@ -986,17 +1042,17 @@
                     <div style="background:#f8f4f0; border-radius:8px; padding:0.8rem; border-left:4px solid #27ae60;">
                         <strong>📦 Data Produk</strong>
                         <br><span style="font-size:0.7rem; color:var(--text-light);">Status: <span class="sync-status success">✅ Terhubung</span></span>
-                        <br><a href="${GOOGLE_SCRIPT_URL.produk}" target="_blank" style="color:var(--primary); word-break:break-all; font-size:0.7rem;">Buka Spreadsheet →</a>
+                        <br><a href="${GOOGLE_SCRIPT_URL.produkSpreadsheet}" target="_blank" class="spreadsheet-link">Buka Spreadsheet Produk →</a>
                     </div>
                     <div style="background:#f8f4f0; border-radius:8px; padding:0.8rem; border-left:4px solid #27ae60;">
                         <strong>📋 Data Pesanan</strong>
                         <br><span style="font-size:0.7rem; color:var(--text-light);">Status: <span class="sync-status success">✅ Terhubung</span></span>
-                        <br><a href="${GOOGLE_SCRIPT_URL.pesanan}" target="_blank" style="color:var(--primary); word-break:break-all; font-size:0.7rem;">Buka Spreadsheet →</a>
+                        <br><a href="${GOOGLE_SCRIPT_URL.pesananSpreadsheet}" target="_blank" class="spreadsheet-link">Buka Spreadsheet Pesanan →</a>
                     </div>
                     <div style="background:#f8f4f0; border-radius:8px; padding:0.8rem; border-left:4px solid #27ae60;">
                         <strong>👤 Data Member</strong>
                         <br><span style="font-size:0.7rem; color:var(--text-light);">Status: <span class="sync-status success">✅ Terhubung</span></span>
-                        <br><a href="${GOOGLE_SCRIPT_URL.member}" target="_blank" style="color:var(--primary); word-break:break-all; font-size:0.7rem;">Buka Spreadsheet →</a>
+                        <br><a href="${GOOGLE_SCRIPT_URL.memberSpreadsheet}" target="_blank" class="spreadsheet-link">Buka Spreadsheet Member →</a>
                     </div>
                 </div>
                 <p style="font-size:0.8rem; color:var(--text-light); margin-top:0.8rem;">
@@ -1007,13 +1063,13 @@
 
         document.getElementById('addProductBtn').onclick = showAddProductModal;
         document.getElementById('syncProductBtn').onclick = async () => {
-            const statusEl = document.getElementById('productSyncStatus');
+            const statusEl = document.getElementById('syncAllStatus');
             statusEl.className = 'sync-status syncing';
-            statusEl.innerHTML = '⏳ Menyinkronkan...';
+            statusEl.innerHTML = '⏳ Sync produk...';
             const success = await syncProductsFromSpreadsheet();
             if (success) {
                 statusEl.className = 'sync-status success';
-                statusEl.innerHTML = '✅ Tersinkron';
+                statusEl.innerHTML = '✅ Produk tersinkron';
                 render();
             } else {
                 statusEl.className = 'sync-status failed';
@@ -1024,6 +1080,7 @@
                 }, 3000);
             }
         };
+        document.getElementById('syncAllBtn').onclick = syncAllData;
         document.querySelectorAll('.edit-product').forEach(btn => {
             btn.onclick = () => showEditProductModal(parseInt(btn.dataset.id));
         });
@@ -1184,7 +1241,6 @@
         main.innerHTML = `<div class="container">
             <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark); margin-bottom:1.5rem;">📦 Riwayat Pesanan</h2>
             
-            <!-- STATISTIK -->
             <div class="order-stats">
                 <span class="order-stat-item">📊 <strong>Total Pesanan:</strong> ${totalOrders}</span>
                 <span class="order-stat-item">✅ <strong>Lunas:</strong> ${totalPaid}</span>
@@ -1192,7 +1248,6 @@
                 <span class="order-stat-item">💰 <strong>Total Belanja:</strong> Rp ${totalAmount.toLocaleString()}</span>
             </div>
             
-            <!-- SORTIR BUTTONS -->
             <div class="sort-buttons">
                 <button class="sort-btn ${sortType === 'terbaru' ? 'active' : ''}" onclick="setSort('terbaru')">
                     <i class="fas fa-sort-down"></i> Terbaru
@@ -1289,15 +1344,7 @@
     }
 
     // ============================================================
-    // 13. SET SORTIR
-    // ============================================================
-    function setSort(type) {
-        sortType = type;
-        render();
-    }
-
-    // ============================================================
-    // 14. PAGE: HOME, PRODUK, KERANJANG, AKUN, KONTAK, PEMBAYARAN
+    // 13. PAGE: HOME, PRODUK, KERANJANG, AKUN, KONTAK, PEMBAYARAN
     // ============================================================
     
     function renderHome(main) {
@@ -1925,7 +1972,7 @@
     }
 
     // ============================================================
-    // 15. AUTH: REGISTER, LOGIN
+    // 14. AUTH: REGISTER, LOGIN
     // ============================================================
     function showRegisterForm() {
         const modal = document.getElementById('globalModal');
@@ -2174,7 +2221,7 @@
     }
 
     // ============================================================
-    // 16. AUTH UI, NAVIGATION, RENDER
+    // 15. AUTH UI, NAVIGATION, RENDER
     // ============================================================
     function showLoginRequired() {
         const main = document.getElementById('mainContent');
@@ -2289,7 +2336,7 @@
     }
 
     // ============================================================
-    // 17. INITIALIZATION
+    // 16. INITIALIZATION
     // ============================================================
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.nav-link').forEach(link => {
