@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
-        /* Styles sama seperti sebelumnya, disimpan singkat untuk efisiensi */
         * { margin:0; padding:0; box-sizing:border-box; }
         :root {
             --primary: #bf5a27;
@@ -83,6 +82,7 @@
         .btn-gold { background:linear-gradient(135deg,#f1c40f,#f39c12); color:#fff; }
         .btn-admin-login { background:linear-gradient(135deg,#2c3e50,#34495e); color:#fff; }
         .btn-member-login { background:linear-gradient(135deg, var(--primary-light), var(--primary)); color:#fff; }
+        .btn-sm { padding:0.3rem 1rem; font-size:0.8rem; }
         .btn-status { padding:0.2rem 0.8rem; font-size:0.7rem; border-radius:999px; border:none; cursor:pointer; font-weight:600; transition:var(--transition); }
         .btn-status:hover { transform:scale(1.05); }
         .btn-status-shipping { background:#3498db; color:#fff; }
@@ -280,6 +280,27 @@
         .sync-status.failed { background:#f8d7da; color:#721c24; }
         .sync-status.syncing { background:#fff3cd; color:#856404; }
 
+        /* SORTIR BUTTONS */
+        .sort-buttons { display:flex; flex-wrap:wrap; gap:0.5rem; margin:1rem 0; }
+        .sort-btn { 
+            padding:0.4rem 1.2rem; 
+            border:2px solid #e8ddd0; 
+            border-radius:999px; 
+            background:#fff; 
+            cursor:pointer; 
+            font-weight:600; 
+            font-size:0.8rem;
+            transition:var(--transition);
+            color:var(--text-light);
+        }
+        .sort-btn:hover { border-color:var(--primary-light); background:#f8f0e8; }
+        .sort-btn.active { border-color:var(--primary); background:var(--primary); color:#fff; }
+        .sort-btn i { margin-right:0.3rem; }
+
+        .order-stats { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; padding:0.8rem; background:#faf8f6; border-radius:12px; }
+        .order-stat-item { font-size:0.85rem; }
+        .order-stat-item strong { color:var(--primary); }
+
         @media (max-width:768px) {
             .navbar { padding:0.8rem 1.2rem; flex-direction:column; text-align:center; }
             .nav-links { justify-content:center; }
@@ -300,6 +321,7 @@
             .cart-actions { flex-direction:column; }
             .login-role-selector { grid-template-columns:1fr; }
             .status-buttons { flex-direction:column; }
+            .sort-buttons { justify-content:center; }
         }
     </style>
 </head>
@@ -346,16 +368,16 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ============================================================
-    // 1. KONFIGURASI SPREADSHEET
+    // 1. KONFIGURASI API APP SCRIPT
     // ============================================================
     const GOOGLE_SCRIPT_URL = {
         produk: 'https://script.google.com/macros/s/AKfycbwV-qMGmofhSxYQ6eGPySTllG1kp11a4VnitXtDEEXeN3M_5l-7X8B_PLdGAhzTKFNCFA/exec',
         pesanan: 'https://script.google.com/macros/s/AKfycbzIHq8A6mTPGxFuQufTEiVsc7flsUu9cEkAp7HgCmQg4WLWTrhfl38P7WVI2WfwTGo8HA/exec',
-        member: 'https://script.google.com/macros/s/AKfycbyDaTMFS1lVbAKByAhMKsi_qYGIyJruxiXw8Rs1aV5xtdsyy5LQQYuBW7hdeUTw4wDOTQ/exec'
+        member: 'https://script.google.com/macros/s/AKfycbw3GOmqpuvoQ7UzQw4xUyhRymQlMEabHTF2h-vNeYznhhP1DX9mKWjPr6SpFz2RLOtZ/exec'
     };
 
     // ============================================================
-    // 2. FUNGSI KONEKSI SPREADSHEET
+    // 2. FUNGSI API APP SCRIPT
     // ============================================================
     async function callGoogleScript(action, data = null, urlType = 'produk') {
         const url = GOOGLE_SCRIPT_URL[urlType];
@@ -524,6 +546,7 @@
     let registerMap, registerMarker, kontakMap;
     let selectedLoginRole = 'member';
     let isLoading = false;
+    let sortType = 'terbaru'; // terbaru, tertua, termahal, termurah
 
     // ============================================================
     // 5. DATA WILAYAH
@@ -590,7 +613,6 @@
         } catch(e) { console.error('Error loading data:', e); }
         updateCartCount();
         
-        // Sync data dari spreadsheet
         setTimeout(() => {
             syncProductsFromSpreadsheet();
             if (currentUser) {
@@ -666,7 +688,30 @@
     }
 
     // ============================================================
-    // 7. ADMIN STATUS UPDATE FUNCTIONS
+    // 7. SORTIR FUNCTIONS
+    // ============================================================
+    function sortOrders(orders, type) {
+        const sorted = [...orders];
+        switch(type) {
+            case 'terbaru':
+                return sorted.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+            case 'tertua':
+                return sorted.sort((a, b) => new Date(a.orderDate) - new Date(b.orderDate));
+            case 'termahal':
+                return sorted.sort((a, b) => b.total - a.total);
+            case 'termurah':
+                return sorted.sort((a, b) => a.total - b.total);
+            case 'terbayar':
+                return sorted.filter(o => o.paymentStatus === 'Terbayar');
+            case 'belum_bayar':
+                return sorted.filter(o => o.paymentStatus === 'Belum Dibayar');
+            default:
+                return sorted;
+        }
+    }
+
+    // ============================================================
+    // 8. ADMIN STATUS UPDATE FUNCTIONS
     // ============================================================
     function updateShippingStatus(orderNumber, newStatus) {
         const orderIndex = orders.findIndex(o => o.orderNumber === orderNumber);
@@ -696,7 +741,7 @@
     }
 
     // ============================================================
-    // 8. RENDER FUNCTIONS (disingkat untuk efisiensi)
+    // 9. RENDER FUNCTIONS
     // ============================================================
     
     // Render Product Card
@@ -826,7 +871,7 @@
     }
 
     // ============================================================
-    // 9. PAGE: ADMIN
+    // 10. PAGE: ADMIN
     // ============================================================
     function renderAdmin(main) {
         if (!currentUser || currentUser.role !== 'admin') {
@@ -988,7 +1033,7 @@
     }
 
     // ============================================================
-    // 10. PRODUCT CRUD WITH SPREADSHEET SYNC
+    // 11. PRODUCT CRUD WITH SPREADSHEET SYNC
     // ============================================================
     function showAddProductModal() {
         const modal = document.getElementById('globalModal');
@@ -1034,7 +1079,6 @@
             products.push(newProduct);
             saveProducts();
             
-            // SIMPAN KE SPREADSHEET
             const saved = await saveProductToSpreadsheet(newProduct);
             if (saved) {
                 document.getElementById('prodFeedback').innerHTML = '<span style="color:#27ae60;">✅ Produk berhasil ditambahkan dan disimpan ke spreadsheet!</span>';
@@ -1095,7 +1139,6 @@
                 products[index] = updatedProduct;
                 saveProducts();
                 
-                // SIMPAN KE SPREADSHEET
                 const saved = await saveProductToSpreadsheet(updatedProduct);
                 if (saved) {
                     document.getElementById('editProdFeedback').innerHTML = '<span style="color:#27ae60;">✅ Produk berhasil diupdate dan disimpan ke spreadsheet!</span>';
@@ -1116,7 +1159,6 @@
         const product = products.find(p => p.id === productId);
         products = products.filter(p => p.id !== productId);
         saveProducts();
-        // Hapus dari spreadsheet
         if (product) {
             callGoogleScript('deleteProduct', { id: productId, name: product.name }, 'produk');
         }
@@ -1125,267 +1167,138 @@
     }
 
     // ============================================================
-    // 11. PAGE: HOME, PRODUK, KERANJANG, PESANAN, AKUN, KONTAK, PEMBAYARAN
+    // 12. PAGE: PESANAN dengan SORTIR
     // ============================================================
-    // ... (fungsi render lainnya tetap sama seperti sebelumnya)
-    // Disingkat karena panjang, tapi fungsi utamanya tetap lengkap
-
-    // ============================================================
-    // 12. AUTH: REGISTER, LOGIN
-    // ============================================================
-    function showRegisterForm() {
-        const modal = document.getElementById('globalModal');
-        const content = document.getElementById('modalDynamicContent');
-        content.classList.add('large');
-        content.innerHTML = `
-            <span class="close-modal"><i class="fas fa-times"></i></span>
-            <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark);">📝 Daftar Member</h2>
-            <div class="form-group"><input type="text" id="regName" placeholder="Nama Lengkap *"></div>
-            <div class="form-group"><input type="text" id="regWa" placeholder="Nomor WhatsApp *"></div>
-            <div class="form-group"><input type="password" id="regPass" placeholder="Password *"></div>
-            <div class="form-group"><input type="password" id="regConfirmPass" placeholder="Ulangi Password *"></div>
-            <div class="form-group"><textarea id="regAddress" placeholder="Alamat Lengkap *"></textarea></div>
-            <div class="form-group">
-                <label>Kabupaten *</label>
-                <select id="regKabupaten"></select>
-            </div>
-            <div class="form-group">
-                <label>Kecamatan *</label>
-                <select id="regKecamatan"></select>
-            </div>
-            <div class="form-group">
-                <label>Desa *</label>
-                <select id="regDesa"></select>
-            </div>
-            <div class="form-group">
-                <label>Titik Lokasi (klik pada peta)</label>
-                <div id="registerMap"></div>
-            </div>
-            <div id="regError" class="error-msg"></div>
-            <button class="btn btn-primary" id="submitRegister" style="width:100%;"><i class="fas fa-user-plus"></i> Daftar Sekarang</button>
-        `;
-        modal.classList.add('show');
+    function renderPesanan(main) {
+        if (!currentUser) { showLoginRequired(); return; }
         
-        const kabSelect = document.getElementById('regKabupaten');
-        const kecSelect = document.getElementById('regKecamatan');
-        const desaSelect = document.getElementById('regDesa');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        const filteredOrders = orders.filter(o => o.orderNumber);
+        const sortedOrders = sortOrders(filteredOrders, sortType);
         
-        kabSelect.innerHTML = kabupatenData.map(k => `<option value="${k}">${k}</option>`).join('');
-        kabSelect.onchange = () => {
-            const kecList = kecamatanData[kabSelect.value] || ['Pilih Kecamatan'];
-            kecSelect.innerHTML = kecList.map(k => `<option value="${k}">${k}</option>`).join('');
-            kecSelect.onchange();
-        };
+        const totalOrders = filteredOrders.length;
+        const totalPaid = filteredOrders.filter(o => o.paymentStatus === 'Terbayar').length;
+        const totalPending = filteredOrders.filter(o => o.paymentStatus === 'Belum Dibayar').length;
+        const totalAmount = filteredOrders.reduce((sum, o) => sum + o.total, 0);
         
-        kecSelect.onchange = () => {
-            const desaList = getDesaList(kecSelect.value);
-            desaSelect.innerHTML = desaList.map(d => `<option value="${d}">${d}</option>`).join('');
-        };
-        kabSelect.onchange();
-        
-        setTimeout(() => {
-            if (registerMap) registerMap.remove();
-            if (typeof L !== 'undefined') {
-                registerMap = L.map('registerMap').setView([-7.5521934, 110.7301877], 13);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(registerMap);
-                registerMarker = L.marker([-7.5521934, 110.7301877], {draggable: true}).addTo(registerMap);
-                registerMarker.bindPopup('Geser marker ke lokasi Anda').openPopup();
-            }
-        }, 100);
-        
-        content.querySelector('.close-modal').onclick = () => { 
-            modal.classList.remove('show'); 
-            content.classList.remove('large'); 
-        };
-        
-        document.getElementById('submitRegister').onclick = async () => {
-            const name = document.getElementById('regName').value.trim();
-            const wa = document.getElementById('regWa').value.trim();
-            const pass = document.getElementById('regPass').value;
-            const cpass = document.getElementById('regConfirmPass').value;
-            const address = document.getElementById('regAddress').value.trim();
-            const kabupaten = kabSelect.value;
-            const kecamatan = kecSelect.value;
-            const desa = desaSelect.value;
+        main.innerHTML = `<div class="container">
+            <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark); margin-bottom:1.5rem;">📦 Riwayat Pesanan</h2>
             
-            if (!name || !wa || !pass || !cpass || !address || !kabupaten || !kecamatan || !desa) {
-                document.getElementById('regError').innerText = 'Lengkapi semua field yang bertanda *!'; 
-                return;
-            }
-            if (pass.length < 4) {
-                document.getElementById('regError').innerText = 'Password minimal 4 karakter!'; 
-                return;
-            }
-            if (pass !== cpass) { 
-                document.getElementById('regError').innerText = 'Password tidak cocok!'; 
-                return; 
-            }
-            
-            const existing = JSON.parse(localStorage.getItem('dapurUser') || 'null');
-            if (existing && existing.name === name) {
-                document.getElementById('regError').innerText = 'Nama sudah terdaftar!'; 
-                return;
-            }
-            
-            const latlng = registerMarker ? registerMarker.getLatLng() : { lat: -7.5521934, lng: 110.7301877 };
-            const isAdmin = name.toLowerCase() === 'admin' || name.toLowerCase() === 'administrator';
-            
-            currentUser = { 
-                name, wa, password: pass, address, kabupaten, kecamatan, desa,
-                mapPoint: { lat: latlng.lat, lng: latlng.lng },
-                role: isAdmin ? 'admin' : 'member',
-                joinDate: new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })
-            };
-            saveUser();
-            
-            modal.classList.remove('show');
-            content.classList.remove('large');
-            alert(`✅ Registrasi berhasil! Data tersimpan di spreadsheet. Selamat datang ${isAdmin ? 'Admin' : 'Member'}!`);
-            render();
-        };
-    }
-
-    function showLoginForm() {
-        const modal = document.getElementById('globalModal');
-        const content = document.getElementById('modalDynamicContent');
-        selectedLoginRole = 'member';
-        
-        content.innerHTML = `
-            <span class="close-modal"><i class="fas fa-times"></i></span>
-            <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark); text-align:center;">🔑 Login</h2>
-            <p style="text-align:center; color:var(--text-light); font-size:0.9rem;">Pilih peran Anda untuk masuk</p>
-            
-            <div class="login-role-selector">
-                <div class="login-role-btn active" id="roleMember" onclick="selectLoginRole('member')">
-                    <span class="role-icon">⭐</span>
-                    <div class="role-name">Member</div>
-                    <div class="role-desc">Akses pelanggan</div>
-                </div>
-                <div class="login-role-btn" id="roleAdmin" onclick="selectLoginRole('admin')">
-                    <span class="role-icon">👑</span>
-                    <div class="role-name">Admin</div>
-                    <div class="role-desc">Akses pengelola</div>
-                </div>
+            <!-- STATISTIK -->
+            <div class="order-stats">
+                <span class="order-stat-item">📊 <strong>Total Pesanan:</strong> ${totalOrders}</span>
+                <span class="order-stat-item">✅ <strong>Lunas:</strong> ${totalPaid}</span>
+                <span class="order-stat-item">⏳ <strong>Menunggu Bayar:</strong> ${totalPending}</span>
+                <span class="order-stat-item">💰 <strong>Total Belanja:</strong> Rp ${totalAmount.toLocaleString()}</span>
             </div>
             
-            <div id="loginFormContainer">
-                <div class="form-group">
-                    <label><i class="fas fa-user"></i> Nama / Username</label>
-                    <input type="text" id="loginName" placeholder="Masukkan nama Anda">
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-lock"></i> Password</label>
-                    <input type="password" id="loginPass" placeholder="Masukkan password">
-                </div>
-                <div id="loginError" class="error-msg"></div>
-                <button class="btn btn-member-login" id="submitLogin" style="width:100%;">
-                    <i class="fas fa-sign-in-alt"></i> Masuk sebagai <span id="loginRoleLabel">Member</span>
+            <!-- SORTIR BUTTONS -->
+            <div class="sort-buttons">
+                <button class="sort-btn ${sortType === 'terbaru' ? 'active' : ''}" onclick="setSort('terbaru')">
+                    <i class="fas fa-sort-down"></i> Terbaru
+                </button>
+                <button class="sort-btn ${sortType === 'tertua' ? 'active' : ''}" onclick="setSort('tertua')">
+                    <i class="fas fa-sort-up"></i> Tertua
+                </button>
+                <button class="sort-btn ${sortType === 'termahal' ? 'active' : ''}" onclick="setSort('termahal')">
+                    <i class="fas fa-sort-amount-down"></i> Termahal
+                </button>
+                <button class="sort-btn ${sortType === 'termurah' ? 'active' : ''}" onclick="setSort('termurah')">
+                    <i class="fas fa-sort-amount-up"></i> Termurah
+                </button>
+                <button class="sort-btn ${sortType === 'terbayar' ? 'active' : ''}" onclick="setSort('terbayar')">
+                    <i class="fas fa-check-circle"></i> Sudah Bayar
+                </button>
+                <button class="sort-btn ${sortType === 'belum_bayar' ? 'active' : ''}" onclick="setSort('belum_bayar')">
+                    <i class="fas fa-clock"></i> Belum Bayar
                 </button>
             </div>
             
-            <p style="margin-top:1rem; text-align:center; font-size:0.85rem; color:var(--text-light);">
-                Belum punya akun? <a href="#" onclick="document.getElementById('globalModal').classList.remove('show'); showRegisterForm();" style="color:var(--primary); font-weight:600;">Daftar Sekarang</a>
-            </p>
-            <p style="text-align:center; font-size:0.8rem; color:var(--text-light);">
-                <a href="#" id="forgotPassLink" style="color:var(--primary);">Lupa Password?</a>
-            </p>
-        `;
-        modal.classList.add('show');
-        
-        window.selectLoginRole = function(role) {
-            selectedLoginRole = role;
-            document.querySelectorAll('.login-role-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById('role' + role.charAt(0).toUpperCase() + role.slice(1)).classList.add('active');
-            
-            const label = document.getElementById('loginRoleLabel');
-            if (label) {
-                label.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+            ${sortedOrders.length === 0 ? 
+                `<div class="info-panel" style="text-align:center; padding:3rem;">
+                    <i class="fas fa-clipboard-list" style="font-size:3rem; opacity:0.2;"></i>
+                    <p style="margin-top:1rem;">${filteredOrders.length === 0 ? 'Belum ada pesanan.' : 'Tidak ada pesanan sesuai filter.'}</p>
+                </div>` : 
+                `<div class="info-panel" style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>No. Pesanan</th>
+                                <th>Tgl Order</th>
+                                <th>Tgl Kirim</th>
+                                <th>Barang</th>
+                                <th>Total</th>
+                                <th>Status Pembayaran</th>
+                                <th>Status Kirim</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sortedOrders.map((o) => {
+                                const isPaid = o.paymentStatus === 'Terbayar';
+                                
+                                return `<tr>
+                                    <td><strong>${o.orderNumber}</strong></td>
+                                    <td>${o.orderDate}</td>
+                                    <td>${o.shippingDate}</td>
+                                    <td>${o.items.map(i => `${i.name} x${i.qty}`).join(', ')}</td>
+                                    <td>Rp ${o.total.toLocaleString()}</td>
+                                    <td>
+                                        ${isPaid ? 
+                                            `<span class="badge badge-success"><i class="fas fa-check-circle"></i> Terbayar</span>` :
+                                            `<button class="action-btn action-btn-pay" onclick="showPaymentPopup('${o.orderNumber}', ${o.total})">
+                                                <i class="fas fa-credit-card"></i> Bayar Sekarang
+                                            </button>`
+                                        }
+                                    </td>
+                                    <td>
+                                        ${isAdmin ? 
+                                            `<div class="status-buttons">
+                                                <button class="btn-status btn-status-${o.shippingStatus === 'Selesai' ? 'done' : o.shippingStatus === 'Dikirim' ? 'shipping' : 'pending'}" 
+                                                        onclick="updateShippingStatus('${o.orderNumber}', '${o.shippingStatus === 'Menunggu' ? 'Dikirim' : o.shippingStatus === 'Dikirim' ? 'Selesai' : 'Menunggu'}')">
+                                                    ${o.shippingStatus}
+                                                </button>
+                                            </div>` :
+                                            `<span class="badge ${o.shippingStatus === 'Selesai' ? 'badge-success' : o.shippingStatus === 'Dikirim' ? 'badge-info' : 'badge-warning'}">${o.shippingStatus}</span>`
+                                        }
+                                    </td>
+                                    <td>
+                                        ${isAdmin ? 
+                                            `<div class="status-buttons">
+                                                <button class="btn-status btn-status-${o.transactionStatus === 'Selesai' ? 'done' : o.transactionStatus === 'Diproses' ? 'shipping' : 'pending'}"
+                                                        onclick="updateTransactionStatus('${o.orderNumber}', '${o.transactionStatus === 'Pending' ? 'Diproses' : o.transactionStatus === 'Diproses' ? 'Selesai' : 'Pending'}')">
+                                                    ${o.transactionStatus}
+                                                </button>
+                                            </div>` :
+                                            `<span class="badge ${o.transactionStatus === 'Selesai' ? 'badge-success' : 'badge-warning'}">${o.transactionStatus}</span>`
+                                        }
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    ${isAdmin ? `
+                        <div style="margin-top:1rem; padding:0.8rem; background:#f8f4f0; border-radius:8px; font-size:0.8rem; color:var(--text-light);">
+                            <i class="fas fa-crown" style="color:#f39c12;"></i> 
+                            <strong>Mode Admin:</strong> Klik tombol status untuk mengubah status pengiriman dan transaksi.
+                        </div>
+                    ` : ''}
+                </div>`
             }
-            
-            const loginBtn = document.getElementById('submitLogin');
-            if (loginBtn) {
-                if (role === 'admin') {
-                    loginBtn.className = 'btn btn-admin-login';
-                    loginBtn.style.width = '100%';
-                } else {
-                    loginBtn.className = 'btn btn-member-login';
-                    loginBtn.style.width = '100%';
-                }
-            }
-        };
-        
-        content.querySelector('.close-modal').onclick = () => modal.classList.remove('show');
-        
-        document.getElementById('submitLogin').onclick = () => {
-            const name = document.getElementById('loginName').value.trim();
-            const pass = document.getElementById('loginPass').value;
-            
-            if (!name || !pass) {
-                document.getElementById('loginError').innerText = 'Isi nama dan password!';
-                return;
-            }
-            
-            // Cek login admin khusus
-            if (selectedLoginRole === 'admin') {
-                if (name === ADMIN_CREDENTIALS.username && pass === ADMIN_CREDENTIALS.password) {
-                    let adminUser = JSON.parse(localStorage.getItem('dapurUser') || 'null');
-                    if (!adminUser || adminUser.name !== ADMIN_CREDENTIALS.username) {
-                        adminUser = {
-                            name: ADMIN_CREDENTIALS.username,
-                            wa: '081229523837',
-                            password: ADMIN_CREDENTIALS.password,
-                            address: 'Kartasura, Sukoharjo',
-                            kabupaten: 'Sukoharjo',
-                            kecamatan: 'Kartasura',
-                            desa: 'Gonilan',
-                            role: 'admin',
-                            joinDate: new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })
-                        };
-                        localStorage.setItem('dapurUser', JSON.stringify(adminUser));
-                        saveMemberToSpreadsheet(adminUser);
-                    }
-                    currentUser = adminUser;
-                    saveUser();
-                    modal.classList.remove('show');
-                    alert('👑 Selamat datang Admin! Data Anda tersimpan di spreadsheet.');
-                    syncOrdersFromSpreadsheet();
-                    render();
-                    return;
-                } else {
-                    document.getElementById('loginError').innerText = 'Username atau password admin salah!';
-                    return;
-                }
-            }
-            
-            // Cek login member biasa
-            const stored = JSON.parse(localStorage.getItem('dapurUser') || 'null');
-            if (stored && stored.name === name && stored.password === pass) {
-                if (stored.role === 'admin') {
-                    document.getElementById('loginError').innerText = 'Akun ini adalah admin! Silakan pilih Admin.';
-                    return;
-                }
-                currentUser = stored;
-                saveUser();
-                modal.classList.remove('show');
-                alert(`👋 Selamat datang kembali ${currentUser.name}!`);
-                syncOrdersFromSpreadsheet();
-                render();
-            } else {
-                document.getElementById('loginError').innerText = 'Nama atau password salah!';
-            }
-        };
-        
-        document.getElementById('forgotPassLink').onclick = (e) => { 
-            e.preventDefault(); 
-            alert('Hubungi admin via WhatsApp 0812-2952-3837 untuk reset password.'); 
-        };
+        </div>`;
     }
 
     // ============================================================
-    // 13. PAGE RENDER FUNCTIONS (Ringkas)
+    // 13. SET SORTIR
     // ============================================================
-    // Fungsi-fungsi render untuk halaman: Home, Produk, Keranjang, Pesanan, Akun, Kontak, Pembayaran
-    // (Dipertahankan seperti sebelumnya untuk mempertahankan fungsionalitas)
+    function setSort(type) {
+        sortType = type;
+        render();
+    }
+
+    // ============================================================
+    // 14. PAGE: HOME, PRODUK, KERANJANG, AKUN, KONTAK, PEMBAYARAN
+    // ============================================================
     
     function renderHome(main) {
         main.innerHTML = `<div class="container">
@@ -1683,93 +1596,6 @@
         };
     }
 
-    function renderPesanan(main) {
-        if (!currentUser) { showLoginRequired(); return; }
-        
-        const filteredOrders = orders.filter(o => o.orderNumber);
-        const isAdmin = currentUser && currentUser.role === 'admin';
-        
-        main.innerHTML = `<div class="container">
-            <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark); margin-bottom:1.5rem;">📦 Riwayat Pesanan</h2>
-            ${filteredOrders.length === 0 ? 
-                `<div class="info-panel" style="text-align:center; padding:3rem;">
-                    <i class="fas fa-clipboard-list" style="font-size:3rem; opacity:0.2;"></i>
-                    <p style="margin-top:1rem;">Belum ada pesanan.</p>
-                </div>` : 
-                `<div class="info-panel" style="overflow-x:auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>No. Pesanan</th>
-                                <th>Tgl Order</th>
-                                <th>Tgl Kirim</th>
-                                <th>Barang</th>
-                                <th>Total</th>
-                                <th>Status Pembayaran</th>
-                                <th>Status Kirim</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${filteredOrders.map((o) => {
-                                const isPaid = o.paymentStatus === 'Terbayar';
-                                
-                                return `<tr>
-                                    <td><strong>${o.orderNumber}</strong></td>
-                                    <td>${o.orderDate}</td>
-                                    <td>${o.shippingDate}</td>
-                                    <td>${o.items.map(i => `${i.name} x${i.qty}`).join(', ')}</td>
-                                    <td>Rp ${o.total.toLocaleString()}</td>
-                                    <td>
-                                        ${isPaid ? 
-                                            `<span class="badge badge-success"><i class="fas fa-check-circle"></i> Terbayar</span>` :
-                                            `<button class="action-btn action-btn-pay" onclick="showPaymentPopup('${o.orderNumber}', ${o.total})">
-                                                <i class="fas fa-credit-card"></i> Bayar Sekarang
-                                            </button>`
-                                        }
-                                    </td>
-                                    <td>
-                                        ${isAdmin ? 
-                                            `<div class="status-buttons">
-                                                <button class="btn-status btn-status-${o.shippingStatus === 'Selesai' ? 'done' : o.shippingStatus === 'Dikirim' ? 'shipping' : 'pending'}" 
-                                                        onclick="updateShippingStatus('${o.orderNumber}', '${o.shippingStatus === 'Menunggu' ? 'Dikirim' : o.shippingStatus === 'Dikirim' ? 'Selesai' : 'Menunggu'}')">
-                                                    ${o.shippingStatus}
-                                                </button>
-                                            </div>` :
-                                            `<span class="badge ${o.shippingStatus === 'Selesai' ? 'badge-success' : o.shippingStatus === 'Dikirim' ? 'badge-info' : 'badge-warning'}">${o.shippingStatus}</span>`
-                                        }
-                                    </td>
-                                    <td>
-                                        ${isAdmin ? 
-                                            `<div class="status-buttons">
-                                                <button class="btn-status btn-status-${o.transactionStatus === 'Selesai' ? 'done' : o.transactionStatus === 'Diproses' ? 'shipping' : 'pending'}"
-                                                        onclick="updateTransactionStatus('${o.orderNumber}', '${o.transactionStatus === 'Pending' ? 'Diproses' : o.transactionStatus === 'Diproses' ? 'Selesai' : 'Pending'}')">
-                                                    ${o.transactionStatus}
-                                                </button>
-                                            </div>` :
-                                            `<span class="badge ${o.transactionStatus === 'Selesai' ? 'badge-success' : 'badge-warning'}">${o.transactionStatus}</span>`
-                                        }
-                                    </td>
-                                </tr>`;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                    ${isAdmin ? `
-                        <div style="margin-top:1rem; padding:0.8rem; background:#f8f4f0; border-radius:8px; font-size:0.8rem; color:var(--text-light);">
-                            <i class="fas fa-crown" style="color:#f39c12;"></i> 
-                            <strong>Mode Admin:</strong> Klik tombol status untuk mengubah status pengiriman dan transaksi.
-                            <span style="display:inline-block; margin-left:0.5rem;">
-                                <span class="badge badge-info" style="background:#3498db; color:#fff;">Menunggu</span>
-                                <span class="badge badge-info" style="background:#f39c12; color:#fff;">Dikirim</span>
-                                <span class="badge badge-info" style="background:#27ae60; color:#fff;">Selesai</span>
-                            </span>
-                        </div>
-                    ` : ''}
-                </div>`
-            }
-        </div>`;
-    }
-
     function showPaymentPopup(orderNumber, total) {
         const modal = document.getElementById('globalModal');
         const content = document.getElementById('modalDynamicContent');
@@ -1915,7 +1741,6 @@
             </div>
         </div>`;
         
-        // Setup edit form
         const editForm = document.getElementById('editProfileForm');
         const editBtn = document.getElementById('editProfileBtn');
         const cancelBtn = document.getElementById('cancelEditBtn');
@@ -2100,7 +1925,256 @@
     }
 
     // ============================================================
-    // 14. AUTH UI, NAVIGATION, RENDER
+    // 15. AUTH: REGISTER, LOGIN
+    // ============================================================
+    function showRegisterForm() {
+        const modal = document.getElementById('globalModal');
+        const content = document.getElementById('modalDynamicContent');
+        content.classList.add('large');
+        content.innerHTML = `
+            <span class="close-modal"><i class="fas fa-times"></i></span>
+            <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark);">📝 Daftar Member</h2>
+            <div class="form-group"><input type="text" id="regName" placeholder="Nama Lengkap *"></div>
+            <div class="form-group"><input type="text" id="regWa" placeholder="Nomor WhatsApp *"></div>
+            <div class="form-group"><input type="password" id="regPass" placeholder="Password *"></div>
+            <div class="form-group"><input type="password" id="regConfirmPass" placeholder="Ulangi Password *"></div>
+            <div class="form-group"><textarea id="regAddress" placeholder="Alamat Lengkap *"></textarea></div>
+            <div class="form-group">
+                <label>Kabupaten *</label>
+                <select id="regKabupaten"></select>
+            </div>
+            <div class="form-group">
+                <label>Kecamatan *</label>
+                <select id="regKecamatan"></select>
+            </div>
+            <div class="form-group">
+                <label>Desa *</label>
+                <select id="regDesa"></select>
+            </div>
+            <div class="form-group">
+                <label>Titik Lokasi (klik pada peta)</label>
+                <div id="registerMap"></div>
+            </div>
+            <div id="regError" class="error-msg"></div>
+            <button class="btn btn-primary" id="submitRegister" style="width:100%;"><i class="fas fa-user-plus"></i> Daftar Sekarang</button>
+        `;
+        modal.classList.add('show');
+        
+        const kabSelect = document.getElementById('regKabupaten');
+        const kecSelect = document.getElementById('regKecamatan');
+        const desaSelect = document.getElementById('regDesa');
+        
+        kabSelect.innerHTML = kabupatenData.map(k => `<option value="${k}">${k}</option>`).join('');
+        kabSelect.onchange = () => {
+            const kecList = kecamatanData[kabSelect.value] || ['Pilih Kecamatan'];
+            kecSelect.innerHTML = kecList.map(k => `<option value="${k}">${k}</option>`).join('');
+            kecSelect.onchange();
+        };
+        
+        kecSelect.onchange = () => {
+            const desaList = getDesaList(kecSelect.value);
+            desaSelect.innerHTML = desaList.map(d => `<option value="${d}">${d}</option>`).join('');
+        };
+        kabSelect.onchange();
+        
+        setTimeout(() => {
+            if (registerMap) registerMap.remove();
+            if (typeof L !== 'undefined') {
+                registerMap = L.map('registerMap').setView([-7.5521934, 110.7301877], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(registerMap);
+                registerMarker = L.marker([-7.5521934, 110.7301877], {draggable: true}).addTo(registerMap);
+                registerMarker.bindPopup('Geser marker ke lokasi Anda').openPopup();
+            }
+        }, 100);
+        
+        content.querySelector('.close-modal').onclick = () => { 
+            modal.classList.remove('show'); 
+            content.classList.remove('large'); 
+        };
+        
+        document.getElementById('submitRegister').onclick = async () => {
+            const name = document.getElementById('regName').value.trim();
+            const wa = document.getElementById('regWa').value.trim();
+            const pass = document.getElementById('regPass').value;
+            const cpass = document.getElementById('regConfirmPass').value;
+            const address = document.getElementById('regAddress').value.trim();
+            const kabupaten = kabSelect.value;
+            const kecamatan = kecSelect.value;
+            const desa = desaSelect.value;
+            
+            if (!name || !wa || !pass || !cpass || !address || !kabupaten || !kecamatan || !desa) {
+                document.getElementById('regError').innerText = 'Lengkapi semua field yang bertanda *!'; 
+                return;
+            }
+            if (pass.length < 4) {
+                document.getElementById('regError').innerText = 'Password minimal 4 karakter!'; 
+                return;
+            }
+            if (pass !== cpass) { 
+                document.getElementById('regError').innerText = 'Password tidak cocok!'; 
+                return; 
+            }
+            
+            const existing = JSON.parse(localStorage.getItem('dapurUser') || 'null');
+            if (existing && existing.name === name) {
+                document.getElementById('regError').innerText = 'Nama sudah terdaftar!'; 
+                return;
+            }
+            
+            const latlng = registerMarker ? registerMarker.getLatLng() : { lat: -7.5521934, lng: 110.7301877 };
+            const isAdmin = name.toLowerCase() === 'admin' || name.toLowerCase() === 'administrator';
+            
+            currentUser = { 
+                name, wa, password: pass, address, kabupaten, kecamatan, desa,
+                mapPoint: { lat: latlng.lat, lng: latlng.lng },
+                role: isAdmin ? 'admin' : 'member',
+                joinDate: new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })
+            };
+            saveUser();
+            
+            modal.classList.remove('show');
+            content.classList.remove('large');
+            alert(`✅ Registrasi berhasil! Data tersimpan di spreadsheet. Selamat datang ${isAdmin ? 'Admin' : 'Member'}!`);
+            render();
+        };
+    }
+
+    function showLoginForm() {
+        const modal = document.getElementById('globalModal');
+        const content = document.getElementById('modalDynamicContent');
+        selectedLoginRole = 'member';
+        
+        content.innerHTML = `
+            <span class="close-modal"><i class="fas fa-times"></i></span>
+            <h2 style="font-family:'Playfair Display',serif; color:var(--primary-dark); text-align:center;">🔑 Login</h2>
+            <p style="text-align:center; color:var(--text-light); font-size:0.9rem;">Pilih peran Anda untuk masuk</p>
+            
+            <div class="login-role-selector">
+                <div class="login-role-btn active" id="roleMember" onclick="selectLoginRole('member')">
+                    <span class="role-icon">⭐</span>
+                    <div class="role-name">Member</div>
+                    <div class="role-desc">Akses pelanggan</div>
+                </div>
+                <div class="login-role-btn" id="roleAdmin" onclick="selectLoginRole('admin')">
+                    <span class="role-icon">👑</span>
+                    <div class="role-name">Admin</div>
+                    <div class="role-desc">Akses pengelola</div>
+                </div>
+            </div>
+            
+            <div id="loginFormContainer">
+                <div class="form-group">
+                    <label><i class="fas fa-user"></i> Nama / Username</label>
+                    <input type="text" id="loginName" placeholder="Masukkan nama Anda">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-lock"></i> Password</label>
+                    <input type="password" id="loginPass" placeholder="Masukkan password">
+                </div>
+                <div id="loginError" class="error-msg"></div>
+                <button class="btn btn-member-login" id="submitLogin" style="width:100%;">
+                    <i class="fas fa-sign-in-alt"></i> Masuk sebagai <span id="loginRoleLabel">Member</span>
+                </button>
+            </div>
+            
+            <p style="margin-top:1rem; text-align:center; font-size:0.85rem; color:var(--text-light);">
+                Belum punya akun? <a href="#" onclick="document.getElementById('globalModal').classList.remove('show'); showRegisterForm();" style="color:var(--primary); font-weight:600;">Daftar Sekarang</a>
+            </p>
+            <p style="text-align:center; font-size:0.8rem; color:var(--text-light);">
+                <a href="#" id="forgotPassLink" style="color:var(--primary);">Lupa Password?</a>
+            </p>
+        `;
+        modal.classList.add('show');
+        
+        window.selectLoginRole = function(role) {
+            selectedLoginRole = role;
+            document.querySelectorAll('.login-role-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('role' + role.charAt(0).toUpperCase() + role.slice(1)).classList.add('active');
+            
+            const label = document.getElementById('loginRoleLabel');
+            if (label) {
+                label.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+            }
+            
+            const loginBtn = document.getElementById('submitLogin');
+            if (loginBtn) {
+                if (role === 'admin') {
+                    loginBtn.className = 'btn btn-admin-login';
+                    loginBtn.style.width = '100%';
+                } else {
+                    loginBtn.className = 'btn btn-member-login';
+                    loginBtn.style.width = '100%';
+                }
+            }
+        };
+        
+        content.querySelector('.close-modal').onclick = () => modal.classList.remove('show');
+        
+        document.getElementById('submitLogin').onclick = () => {
+            const name = document.getElementById('loginName').value.trim();
+            const pass = document.getElementById('loginPass').value;
+            
+            if (!name || !pass) {
+                document.getElementById('loginError').innerText = 'Isi nama dan password!';
+                return;
+            }
+            
+            if (selectedLoginRole === 'admin') {
+                if (name === ADMIN_CREDENTIALS.username && pass === ADMIN_CREDENTIALS.password) {
+                    let adminUser = JSON.parse(localStorage.getItem('dapurUser') || 'null');
+                    if (!adminUser || adminUser.name !== ADMIN_CREDENTIALS.username) {
+                        adminUser = {
+                            name: ADMIN_CREDENTIALS.username,
+                            wa: '081229523837',
+                            password: ADMIN_CREDENTIALS.password,
+                            address: 'Kartasura, Sukoharjo',
+                            kabupaten: 'Sukoharjo',
+                            kecamatan: 'Kartasura',
+                            desa: 'Gonilan',
+                            role: 'admin',
+                            joinDate: new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })
+                        };
+                        localStorage.setItem('dapurUser', JSON.stringify(adminUser));
+                        saveMemberToSpreadsheet(adminUser);
+                    }
+                    currentUser = adminUser;
+                    saveUser();
+                    modal.classList.remove('show');
+                    alert('👑 Selamat datang Admin! Data Anda tersimpan di spreadsheet.');
+                    syncOrdersFromSpreadsheet();
+                    render();
+                    return;
+                } else {
+                    document.getElementById('loginError').innerText = 'Username atau password admin salah!';
+                    return;
+                }
+            }
+            
+            const stored = JSON.parse(localStorage.getItem('dapurUser') || 'null');
+            if (stored && stored.name === name && stored.password === pass) {
+                if (stored.role === 'admin') {
+                    document.getElementById('loginError').innerText = 'Akun ini adalah admin! Silakan pilih Admin.';
+                    return;
+                }
+                currentUser = stored;
+                saveUser();
+                modal.classList.remove('show');
+                alert(`👋 Selamat datang kembali ${currentUser.name}!`);
+                syncOrdersFromSpreadsheet();
+                render();
+            } else {
+                document.getElementById('loginError').innerText = 'Nama atau password salah!';
+            }
+        };
+        
+        document.getElementById('forgotPassLink').onclick = (e) => { 
+            e.preventDefault(); 
+            alert('Hubungi admin via WhatsApp 0812-2952-3837 untuk reset password.'); 
+        };
+    }
+
+    // ============================================================
+    // 16. AUTH UI, NAVIGATION, RENDER
     // ============================================================
     function showLoginRequired() {
         const main = document.getElementById('mainContent');
@@ -2215,7 +2289,7 @@
     }
 
     // ============================================================
-    // 15. INITIALIZATION
+    // 17. INITIALIZATION
     // ============================================================
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.nav-link').forEach(link => {
